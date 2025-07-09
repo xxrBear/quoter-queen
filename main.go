@@ -5,13 +5,14 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
 	"github.com/joho/godotenv"
 )
 
-func loadConfig() (string, string, string) {
+func loadEnvConfig() (string, string, string) {
 	if err := godotenv.Load(".env"); err != nil {
 		log.Fatal("加载.env文件失败:", err)
 	}
@@ -36,57 +37,68 @@ func connect(server string) *client.Client {
 	return c
 }
 
-func fetchRecentEmails(c *client.Client, folder string, maxFetch uint32) {
-	mbox, err := c.Select(folder, false)
+func fetchRecentEmails(c *client.Client, folder string) {
+	mbox, err := c.Select(folder, true)
 	if err != nil {
 		log.Fatal("选择邮箱失败:", err)
 	}
+
 	if mbox.Messages == 0 {
 		fmt.Println("没有邮件")
 		return
 	}
 
-	from := uint32(1)
-	to := mbox.Messages
-	if mbox.Messages > maxFetch {
-		from = mbox.Messages - maxFetch + 1
+	loc, _ := time.LoadLocation("Asia/Shanghai")
+	today := time.Now().In(loc).Truncate(24 * time.Hour)
+	criteria := imap.NewSearchCriteria()
+	criteria.Since = today.UTC()
+
+	// 搜索邮件
+	ids, err := c.Search(criteria)
+	if err != nil {
+		log.Fatal("搜索邮件失败:", err)
+	}
+	if len(ids) == 0 {
+		fmt.Println("今天没有邮件")
+		return
 	}
 
+	// 构造 UID 集合
 	seqSet := new(imap.SeqSet)
-	seqSet.AddRange(from, to)
+	seqSet.AddNum(ids...)
+	fmt.Println("搜索到 UID:", ids)
 
-	section := &imap.BodySectionName{}
+	// 设置邮件拉取项
+	// section := &imap.BodySectionName{}
+	items := []imap.FetchItem{imap.FetchEnvelope}
+	fmt.Println("items:", len(items))
+
 	messages := make(chan *imap.Message, 10)
-
 	done := make(chan error, 1)
+
 	go func() {
-		done <- c.Fetch(seqSet, []imap.FetchItem{imap.FetchEnvelope, section.FetchItem()}, messages)
+		done <- c.Fetch(seqSet, items, messages)
 	}()
 
-	fmt.Println("最近邮件：")
+	fmt.Println(len(messages))
+
+	// 读取邮件数据
 	for msg := range messages {
 		if msg == nil {
 			continue
 		}
 		fmt.Println("--------")
-		fmt.Println("主题:", msg.Envelope.Subject)
-		if len(msg.Envelope.From) > 0 {
-			fmt.Println("发件人:", msg.Envelope.From[0].Address())
-		} else {
-			fmt.Println("发件人: 无")
-		}
-		// 邮件正文可在这里解析
+		fmt.Println("标题:", msg.Envelope.Subject)
+		fmt.Println("发件人:", msg.Envelope.From[0].Address())
+		fmt.Println("时间:", msg.Envelope.Date)
 	}
 
 	if err := <-done; err != nil {
 		log.Fatal("拉取邮件失败:", err)
 	}
 }
-
 func main() {
-	username, password, server := loadConfig()
-	fmt.Printf("用户名: [%s]\n", username)
-	// 不打印密码，安全考虑
+	username, password, server := loadEnvConfig()
 
 	c := connect(server)
 	defer c.Logout()
@@ -94,7 +106,7 @@ func main() {
 	if err := c.Login(username, password); err != nil {
 		log.Fatal("登录失败:", err)
 	}
-	fmt.Println("登录成功:", username)
 
-	fetchRecentEmails(c, "银行询价", 5)
+	fetchRecentEmails(c, "银行询价")
+
 }
