@@ -10,7 +10,47 @@ import (
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
 	"github.com/joho/godotenv"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+
+	_ "modernc.org/sqlite"
 )
+
+// 定义模型
+type MailState struct {
+	ID   uint `gorm:"primaryKey"` // 主键
+	Name string
+	Age  int
+}
+
+func connectDB() {
+	// 连接数据库，自动创建test.db文件
+	db, err := gorm.Open(sqlite.Open("test.db"), &gorm.Config{})
+	if err != nil {
+		panic("failed to connect database")
+	}
+
+	// 自动迁移，创建表
+	err = db.AutoMigrate(&MailState{})
+	if err != nil {
+		panic(err)
+	}
+
+	// 插入数据
+	db.Create(&MailState{Name: "Alice", Age: 30})
+	db.Create(&MailState{Name: "Bob", Age: 25})
+
+	// 查询所有用户
+	var users []MailState
+	result := db.Find(&users)
+	if result.Error != nil {
+		panic(result.Error)
+	}
+
+	for _, user := range users {
+		fmt.Printf("ID: %d, Name: %s, Age: %d\n", user.ID, user.Name, user.Age)
+	}
+}
 
 func loadEnvConfig() (string, string, string) {
 	if err := godotenv.Load(".env"); err != nil {
@@ -97,16 +137,19 @@ func fetchRecentEmails(c *client.Client, folder string) {
 		log.Fatal("拉取邮件失败:", err)
 	}
 }
+
 func main() {
-	username, password, server := loadEnvConfig()
+	// username, password, server := loadEnvConfig()
 
-	c := connect(server)
-	defer c.Logout()
+	// c := connect(server)
+	// defer c.Logout()
 
-	if err := c.Login(username, password); err != nil {
-		log.Fatal("登录失败:", err)
-	}
+	// if err := c.Login(username, password); err != nil {
+	// 	log.Fatal("登录失败:", err)
+	// }
 
-	fetchRecentEmails(c, "银行询价")
+	// fetchRecentEmails(c, "银行询价")
+
+	connectDB()
 
 }
