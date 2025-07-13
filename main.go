@@ -13,45 +13,46 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // 纯 Go，无需 CGO
 )
 
-// 定义模型
+// MailState 定义数据库表结构
 type MailState struct {
 	ID   uint `gorm:"primaryKey"` // 主键
 	Name string
 	Age  int
 }
 
-func connectDB() {
-	// 连接数据库，自动创建test.db文件
+// 连接数据库，自动创建test.db文件，返回*gorm.DB
+func connectDB() *gorm.DB {
 	db, err := gorm.Open(sqlite.Open("test.db"), &gorm.Config{})
 	if err != nil {
-		panic("failed to connect database")
+		log.Fatalf("连接数据库失败: %v", err)
 	}
 
 	// 自动迁移，创建表
-	err = db.AutoMigrate(&MailState{})
-	if err != nil {
-		panic(err)
+	if err := db.AutoMigrate(&MailState{}); err != nil {
+		log.Fatalf("自动迁移失败: %v", err)
 	}
 
-	// 插入数据
+	// 插入测试数据
 	db.Create(&MailState{Name: "Alice", Age: 30})
 	db.Create(&MailState{Name: "Bob", Age: 25})
 
 	// 查询所有用户
 	var users []MailState
-	result := db.Find(&users)
-	if result.Error != nil {
-		panic(result.Error)
+	if err := db.Find(&users).Error; err != nil {
+		log.Fatalf("查询失败: %v", err)
 	}
 
 	for _, user := range users {
 		fmt.Printf("ID: %d, Name: %s, Age: %d\n", user.ID, user.Name, user.Age)
 	}
+
+	return db
 }
 
+// 加载环境变量中的邮箱配置
 func loadEnvConfig() (string, string, string) {
 	if err := godotenv.Load(".env"); err != nil {
 		log.Fatal("加载.env文件失败:", err)
@@ -68,6 +69,7 @@ func loadEnvConfig() (string, string, string) {
 	return username, password, server
 }
 
+// 连接IMAP服务器（TLS）
 func connect(server string) *client.Client {
 	c, err := client.DialTLS(server, nil)
 	if err != nil {
@@ -77,6 +79,7 @@ func connect(server string) *client.Client {
 	return c
 }
 
+// 抓取指定文件夹当天之后的邮件
 func fetchRecentEmails(c *client.Client, folder string) {
 	mbox, err := c.Select(folder, true)
 	if err != nil {
@@ -93,7 +96,6 @@ func fetchRecentEmails(c *client.Client, folder string) {
 	criteria := imap.NewSearchCriteria()
 	criteria.Since = today.UTC()
 
-	// 搜索邮件
 	ids, err := c.Search(criteria)
 	if err != nil {
 		log.Fatal("搜索邮件失败:", err)
@@ -103,15 +105,11 @@ func fetchRecentEmails(c *client.Client, folder string) {
 		return
 	}
 
-	// 构造 UID 集合
 	seqSet := new(imap.SeqSet)
 	seqSet.AddNum(ids...)
 	fmt.Println("搜索到 UID:", ids)
 
-	// 设置邮件拉取项
-	// section := &imap.BodySectionName{}
 	items := []imap.FetchItem{imap.FetchEnvelope}
-	fmt.Println("items:", len(items))
 
 	messages := make(chan *imap.Message, 10)
 	done := make(chan error, 1)
@@ -120,16 +118,18 @@ func fetchRecentEmails(c *client.Client, folder string) {
 		done <- c.Fetch(seqSet, items, messages)
 	}()
 
-	fmt.Println(len(messages))
-
-	// 读取邮件数据
+	// 遍历邮件
 	for msg := range messages {
-		if msg == nil {
+		if msg == nil || msg.Envelope == nil {
 			continue
 		}
 		fmt.Println("--------")
 		fmt.Println("标题:", msg.Envelope.Subject)
-		fmt.Println("发件人:", msg.Envelope.From[0].Address())
+		if len(msg.Envelope.From) > 0 {
+			fmt.Println("发件人:", msg.Envelope.From[0].Address())
+		} else {
+			fmt.Println("发件人: 无")
+		}
 		fmt.Println("时间:", msg.Envelope.Date)
 	}
 
@@ -139,6 +139,7 @@ func fetchRecentEmails(c *client.Client, folder string) {
 }
 
 func main() {
+	// 加载配置并连接邮箱示例
 	// username, password, server := loadEnvConfig()
 
 	// c := connect(server)
@@ -150,6 +151,6 @@ func main() {
 
 	// fetchRecentEmails(c, "银行询价")
 
+	// 连接数据库示例
 	connectDB()
-
 }
