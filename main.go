@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/base64"
 	"fmt"
 	"log"
@@ -10,10 +11,7 @@ import (
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
 	"github.com/joho/godotenv"
-	"gorm.io/driver/sqlite"
-	"gorm.io/gorm"
-
-	_ "modernc.org/sqlite" // 纯 Go，无需 CGO
+	_ "modernc.org/sqlite"
 )
 
 // MailState 定义数据库表结构
@@ -23,33 +21,20 @@ type MailState struct {
 	Age  int
 }
 
-// 连接数据库，自动创建test.db文件，返回*gorm.DB
-func connectDB() *gorm.DB {
-	db, err := gorm.Open(sqlite.Open("test.db"), &gorm.Config{})
+// 连接数据库，自动创建test.db文件
+func ConnectSQLite(dbPath string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
-		log.Fatalf("连接数据库失败: %v", err)
+		return nil, fmt.Errorf("打开数据库失败: %w", err)
 	}
 
-	// 自动迁移，创建表
-	if err := db.AutoMigrate(&MailState{}); err != nil {
-		log.Fatalf("自动迁移失败: %v", err)
+	// 测试连接
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("无法连接数据库: %w", err)
 	}
 
-	// 插入测试数据
-	db.Create(&MailState{Name: "Alice", Age: 30})
-	db.Create(&MailState{Name: "Bob", Age: 25})
-
-	// 查询所有用户
-	var users []MailState
-	if err := db.Find(&users).Error; err != nil {
-		log.Fatalf("查询失败: %v", err)
-	}
-
-	for _, user := range users {
-		fmt.Printf("ID: %d, Name: %s, Age: %d\n", user.ID, user.Name, user.Age)
-	}
-
-	return db
+	return db, nil
 }
 
 // 加载环境变量中的邮箱配置
@@ -152,5 +137,5 @@ func main() {
 	// fetchRecentEmails(c, "银行询价")
 
 	// 连接数据库示例
-	connectDB()
+	ConnectSQLite("test.db")
 }
