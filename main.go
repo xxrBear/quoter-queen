@@ -66,7 +66,8 @@ func connect(server string) *client.Client {
 
 // 抓取指定文件夹当天之后的邮件
 func fetchRecentEmails(c *client.Client, folder string) {
-	mbox, err := c.Select(folder, true)
+
+	mbox, err := c.Select(folder, true) // 选择邮箱文件夹
 	if err != nil {
 		log.Fatal("选择邮箱失败:", err)
 	}
@@ -108,6 +109,7 @@ func fetchRecentEmails(c *client.Client, folder string) {
 		if msg == nil || msg.Envelope == nil {
 			continue
 		}
+
 		fmt.Println("--------")
 		fmt.Println("标题:", msg.Envelope.Subject)
 		if len(msg.Envelope.From) > 0 {
@@ -125,17 +127,17 @@ func fetchRecentEmails(c *client.Client, folder string) {
 
 func main() {
 	// 加载配置并连接邮箱示例
-	// username, password, server := loadEnvConfig()
+	username, password, server := loadEnvConfig()
 
-	// c := connect(server)
-	// defer c.Logout()
+	c := connect(server)
+	defer c.Logout()
 
-	// if err := c.Login(username, password); err != nil {
-	// 	log.Fatal("登录失败:", err)
-	// }
+	if err := c.Login(username, password); err != nil {
+		log.Fatal("登录失败:", err)
+	}
 
-	// fetchRecentEmails(c, "银行询价")
+	fetchRecentEmails(c, "银行询价")
 
 	// 连接数据库示例
-	ConnectSQLite("test.db")
+	// ConnectSQLite("test.db")
 }
